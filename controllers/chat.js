@@ -2,6 +2,7 @@ const User = require("../models/users")
 const Chat = require("../models/chat")
 const Message = require("../models/messages")
 const mongoose = require("mongoose");
+const Call = require("../models/call");
 
 const summerizeTime = (DateString) => {
     if (!DateString || isNaN(Date.parse(DateString))) {
@@ -142,6 +143,8 @@ const getUserChats = async (req, res) => {
 
 
 
+
+
 const createChat = async (req, res) => {
     try {
 
@@ -197,11 +200,138 @@ const uploadFile = async (req, res) => {
 
 }
 
+async function answerCall(callId) {
+    try {
+        const call = await Call.findById(callId);
+        
+        if (!call) {
+            throw new Error("Call record not found");
+        }
+
+        const updatedCall = await Call.findByIdAndUpdate(
+            callId,
+            {
+                started_at: new Date(),
+                call_status: "accepted"
+            },
+            { new: true }
+        );
+
+        console.log("call answered:" , updatedCall)
+
+        return updatedCall;
+    } catch (error) {
+        console.error("Error updating call start time:", error);
+        throw new Error("Failed to update call start time");
+    }
+}
+
+
+async function updateCallRecord(callId, callStatus) {
+    try {
+        const endedAt = new Date();
+        const call = await Call.findById(callId);
+
+        if (!call) {
+            throw new Error("Call record not found");
+        }
+
+        const duration = calculateDuration(call.started_at, endedAt);
+
+        const updatedCall = await Call.findByIdAndUpdate(
+            callId,
+            {
+                call_status: callStatus,
+                ended_at: endedAt,
+                duration: duration
+            },
+            { new: true }
+        );
+
+        return updatedCall;
+    } catch (error) {
+        console.error("Error updating call record:", error);
+        throw new Error("Failed to update call record");
+    }
+}
+
+
+function calculateDuration(start, end) {
+    const diff = end - start;
+    const hours = Math.floor(diff / 3600000);
+    const minutes = Math.floor((diff % 3600000) / 60000);
+    const seconds = Math.floor((diff % 60000) / 1000);
+
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
+
+async function insertCallRecord(callerId, receiverId, callType, groupId = null) {
+    try {
+        console.log("caller" , callerId,"receiver: ", receiverId ,"type: ", callType)
+        const newCall = new Call({
+            caller: callerId,
+            receiver: receiverId,
+            group: groupId,
+            call_type: callType,
+            call_status: null
+          
+        });
+
+        const savedCall = await newCall.save();
+        console.log("call saved:" , savedCall)
+        return savedCall;
+    } catch (error) {
+        console.error("Error inserting call record:", error);
+        throw new Error("Failed to insert call record");
+    }
+}
+
+
+async function getUserCalls(req, res) {
+    const userId = req.user._id; 
+
+    try {
+        const calls = await Call.find({
+            $or: [{ caller: userId }, { receiver: userId }]
+        })
+        .populate("caller", "name profile_picture") // Populate caller details
+        .populate("receiver", "name profile_picture") // Populate receiver details
+        .populate("group", "groupName members") // Populate group chat details if applicable
+        .sort({ started_at: -1 }) // Sort by started_at in descending order (most recent first)
+        .lean(); // Convert to JSON format
+
+        const filteredCalls = calls.map(call => {
+            // Format timestamps
+            call.started_at = summerizeTime(call.started_at);
+            call.ended_at = call.ended_at ? summerizeTime(call.ended_at) : null;
+            
+            // Add relative time for duration if available
+            if (call.duration) {
+                call.duration = call.duration; // Duration is already in HH:MM:SS format
+            }
+
+            // Add isCaller flag
+            call.isCaller = call.caller._id.toString() === userId.toString();
+
+            return call;
+        });
+
+        return res.status(200).json({ success: true, calls: filteredCalls });
+    } catch (error) {
+        console.error("Error retrieving user calls:", error);
+        throw new Error("Failed to retrieve user calls");
+    }
+}
 
 module.exports = {
     getAllContacts,
     createChat,
     getUserChats,
     getChatMessages,
-    uploadFile
+    uploadFile,
+    insertCallRecord,
+    answerCall,
+    updateCallRecord,
+    getUserCalls,
+    getUserCalls
 }

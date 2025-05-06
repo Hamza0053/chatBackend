@@ -6,6 +6,8 @@ const pushNotificationController = require('../controllers/pushNotificationContr
 const activeUsers = new Map(); // Store active users and their socket IDs
 const { generateAIResponse } = require("../controllers/ai_chat")
 const sendPushNotification = pushNotificationController.sendPushNotification
+const { insertCallRecord, answerCall, updateCallRecord } = require("../controllers/chat");
+
 const path = require("path")
 const fs = require("fs")
 // const sendPushNotification = (subscription, payload) => {
@@ -175,7 +177,7 @@ const chatHandler = (io) => {
                     { arrayFilters: [{ "elem.userId": userId }] } // Ensure match exists
                 );
 
-                console.log('messages is read ', { chatId, userId });
+                // console.log('messages is read ', { chatId, userId });
 
                 // Emit updated unread count
                 const recipientSocket = activeUsers.get(userId?.toString());
@@ -187,6 +189,75 @@ const chatHandler = (io) => {
                 console.error("Error marking message as read:", error);
             }
         });
+
+
+        socket.on("offer", async (data) => {
+            const { offer, receiver, caller } = data;
+            console.log('Offer received:', data);
+
+            const targetSocketId = activeUsers.get(receiver?._id?.toString());
+            console.log('targetSocketId', targetSocketId, 'receiver', receiver, 'activeUsers', activeUsers);
+
+            if (!targetSocketId) {
+                console.error('Error: targetSocketId is undefined');
+                io.to(socket.id).emit("call-status", { receiver: targetSocketId, status: 'Calling...' });
+            } else {
+                console.log('Sending offer to targetSocketId:', targetSocketId);
+                io.to(targetSocketId).emit("offer", { offer, from: socket.id, caller });
+                io.to(socket.id).emit("call-status", { receiver: targetSocketId, status: 'Ringing...' });
+            }
+
+
+            // Insert call record when the offer is made
+            try {
+                console.log("call is going to be inserted")
+                const callRecord = await insertCallRecord(caller.id, receiver._id, "audio"); // or "video" based on your logic
+                console.log('Call record created:', callRecord);
+                io.to(socket.id).emit("call-initiated", { callId: callRecord._id });
+                io.to(targetSocketId).emit("call-initiated", { callId: callRecord._id });
+            } catch (error) {
+                console.error('Error creating call record:', error);
+            }
+        });
+
+        socket.on("end-call", async (data) => {
+            const { targetSocketId, callId, status } = data;
+            console.log("end-call is caller: ", status)
+            try {
+                // Update call record with "ended" status
+                await updateCallRecord(callId, status);
+                
+                // Notify the other party that call has ended
+                io.to(targetSocketId).emit("call-ended", { from: socket.id });
+            } catch (error) {
+                console.error("Error ending call:", error);
+            }
+        });
+
+        // Handle answer
+        socket.on("answer", async (data) => {
+            const { answer, targetSocketId, callId } = data;
+            console.log("answer", answer, "targetSocketId", targetSocketId, "callId", callId)
+            try {
+                // Call the answerCall function with the correct callId
+                await answerCall(callId);
+
+                // Emit the answer to the target socket
+                io.to(targetSocketId).emit("answer", { answer, from: socket.id });
+            } catch (error) {
+                console.error("Error answering call:", error);
+            }
+        });
+
+        // Handle ICE candidates
+        socket.on("ice-candidate", (data) => {
+            const { candidate, targetSocketId } = data;
+            io.to(targetSocketId).emit("ice-candidate", { candidate, from: socket.id });
+        });
+
+        //   socket.on("disconnect", () => {
+        //     console.log('User disconnected:', socket.id);
+        //   });
 
         // 🟡 User disconnects
         socket.on("disconnect", async () => {

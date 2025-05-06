@@ -1,4 +1,4 @@
-const { getAllContacts, createChat, getUserChats, getChatMessages , uploadFile } = require("../controllers/chat")
+const { getAllContacts, createChat, getUserChats, getChatMessages , uploadFile , getUserCalls } = require("../controllers/chat")
 const verifyToken = require("../middlewares/auth");
 const express = require("express")
 const upload = require("../middlewares/fileUpload")
@@ -275,6 +275,95 @@ router.post("/create", verifyToken, createChat);
  */
 
 router.get("/chat", verifyToken, getUserChats);
+
+
+/**
+ * @swagger
+ * /api/calls:
+ *   get:
+ *     summary: Retrieve all calls for the authenticated user
+ *     tags: [Calls]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved user calls
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 calls:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                         example: "60d5ec49a8f3c31234567890"
+ *                       caller:
+ *                         type: object
+ *                         properties:
+ *                           name:
+ *                             type: string
+ *                             example: "John Doe"
+ *                           profile_picture:
+ *                             type: string
+ *                             example: "profile.jpg"
+ *                       receiver:
+ *                         type: object
+ *                         properties:
+ *                           name:
+ *                             type: string
+ *                             example: "Jane Smith"
+ *                           profile_picture:
+ *                             type: string
+ *                             example: "profile.jpg"
+ *                       group:
+ *                         type: object
+ *                         properties:
+ *                           groupName:
+ *                             type: string
+ *                             example: "Team Meeting"
+ *                           members:
+ *                             type: array
+ *                             items:
+ *                               type: string
+ *                             example: ["60d5ec49a8f3c31234567890"]
+ *                       call_type:
+ *                         type: string
+ *                         example: "video"
+ *                       call_status:
+ *                         type: string
+ *                         example: "completed"
+ *                       started_at:
+ *                         type: string
+ *                         example: "2 hours ago"
+ *                       ended_at:
+ *                         type: string
+ *                         example: "1 hour ago"
+ *                       duration:
+ *                         type: string
+ *                         example: "01:30:45"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Failed to retrieve user calls"
+ */
+
+router.get("/calls", verifyToken, getUserCalls);
 
 /**
  * @swagger
